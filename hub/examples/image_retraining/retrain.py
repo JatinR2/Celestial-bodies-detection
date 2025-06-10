@@ -247,17 +247,20 @@ def create_inception_graph():
       Graph holding the trained Inception network, and various tensors we'll be
       manipulating.
     """
-    with tf.compat.v1.Session() as sess:
+    # Create a new graph for the inception model
+    graph = tf.Graph()
+    with graph.as_default():
         model_filename = os.path.join(
             FLAGS.model_dir, 'classify_image_graph_def.pb')
         with gfile.FastGFile(model_filename, 'rb') as f:
             graph_def = tf.compat.v1.GraphDef()
             graph_def.ParseFromString(f.read())
+            # Import the graph def with return elements to get the specific tensors
             bottleneck_tensor, jpeg_data_tensor, resized_input_tensor = (
-                tf.import_graph_def(graph_def, name='', return_elements=[
+                tf.compat.v1.import_graph_def(graph_def, name='', return_elements=[
                     BOTTLENECK_TENSOR_NAME, JPEG_DATA_TENSOR_NAME,
                     RESIZED_INPUT_TENSOR_NAME]))
-    return sess.graph, bottleneck_tensor, jpeg_data_tensor, resized_input_tensor
+    return graph, bottleneck_tensor, jpeg_data_tensor, resized_input_tensor
 
 
 def run_bottleneck_on_image(sess, image_data, image_data_tensor,
@@ -273,6 +276,7 @@ def run_bottleneck_on_image(sess, image_data, image_data_tensor,
     Returns:
       Numpy array of bottleneck values.
     """
+    # Run the image through the model
     bottleneck_values = sess.run(
         bottleneck_tensor,
         {image_data_tensor: image_data})
@@ -718,8 +722,11 @@ def add_final_training_ops(class_count, final_tensor_name, bottleneck_tensor):
       bottleneck input and ground truth input.
     """
     with tf.compat.v1.name_scope('input'):
-        bottleneck_input = tf.compat.v1.placeholder_with_default(
-            bottleneck_tensor, shape=[None, BOTTLENECK_TENSOR_SIZE],
+        # Create proper placeholders that are not connected to the previous graph
+        bottleneck_tensor_shape = bottleneck_tensor.shape.as_list()
+        bottleneck_input = tf.compat.v1.placeholder(
+            tf.float32, 
+            shape=[None, BOTTLENECK_TENSOR_SIZE],
             name='BottleneckInputPlaceholder')
 
         ground_truth_input = tf.compat.v1.placeholder(tf.float32,
@@ -791,7 +798,8 @@ def main(_):
 
     # Set up the pre-trained graph.
     maybe_download_and_extract()
-    graph, bottleneck_tensor, jpeg_data_tensor, resized_image_tensor = (
+    # Create a separate graph for the inception model
+    inception_graph, bottleneck_tensor, jpeg_data_tensor, resized_image_tensor = (
         create_inception_graph())
 
     # Look at the folder structure, and create lists of all the images.
@@ -810,7 +818,9 @@ def main(_):
     do_distort_images = should_distort_images(
         FLAGS.flip_left_right, FLAGS.random_crop, FLAGS.random_scale,
         FLAGS.random_brightness)
-    sess = tf.compat.v1.Session()
+    
+    # Create a session with the inception graph
+    sess = tf.compat.v1.Session(graph=inception_graph)
 
     if do_distort_images:
         # We will be applying distortions, so setup the operations we'll need.
@@ -823,26 +833,41 @@ def main(_):
         cache_bottlenecks(sess, image_lists, FLAGS.image_dir, FLAGS.bottleneck_dir,
                           jpeg_data_tensor, bottleneck_tensor)
 
-    # Add the new layer that we'll be training.
-    (train_step, cross_entropy, bottleneck_input, ground_truth_input,
-     final_tensor) = add_final_training_ops(len(image_lists.keys()),
-                                            FLAGS.final_tensor_name,
-                                            bottleneck_tensor)
-
-    # Create the operations we need to evaluate the accuracy of our new layer.
-    evaluation_step, prediction = add_evaluation_step(
-        final_tensor, ground_truth_input)
-
-    # Merge all the summaries and write them out to /tmp/retrain_logs (by default)
-    merged = tf.compat.v1.summary.merge_all()
+    # Create a new graph for the training ops
+    train_graph = tf.Graph()
+    with train_graph.as_default():
+        # Extract bottleneck features in the inception graph
+        bottleneck_values = tf.compat.v1.placeholder(
+            tf.float32, 
+            shape=[None, BOTTLENECK_TENSOR_SIZE],
+            name='BottleneckInputPlaceholder')
+            
+        # Add the new layer that we'll be training
+        (train_step, cross_entropy, bottleneck_input, ground_truth_input,
+         final_tensor) = add_final_training_ops(len(image_lists.keys()),
+                                              FLAGS.final_tensor_name,
+                                              bottleneck_values)
+                                              
+        # Create the operations we need to evaluate the accuracy of our new layer.
+        evaluation_step, prediction = add_evaluation_step(
+            final_tensor, ground_truth_input)
+            
+        # Merge all the summaries and write them out to /tmp/retrain_logs (by default)
+        merged = tf.compat.v1.summary.merge_all()
+        
+    # Create a session for the training graph
+    train_sess = tf.compat.v1.Session(graph=train_graph)
+    
     train_writer = tf.compat.v1.summary.FileWriter(FLAGS.summaries_dir + '/train',
-                                                   sess.graph)
+                                                  train_sess.graph)
     validation_writer = tf.compat.v1.summary.FileWriter(
         FLAGS.summaries_dir + '/validation')
 
     # Set up all our weights to their initial default values.
-    init = tf.compat.v1.global_variables_initializer()
-    sess.run(init)
+    with train_sess.as_default():
+        with train_graph.as_default():
+            init = tf.compat.v1.global_variables_initializer()
+            train_sess.run(init)
 
     # Run the training for as many cycles as requested on the command line.
     for i in range(FLAGS.how_many_training_steps):
@@ -860,22 +885,23 @@ def main(_):
                 bottleneck_tensor)
         # Feed the bottlenecks and ground truth into the graph, and run a training
         # step. Capture training summaries for TensorBoard with the `merged` op.
-        train_summary, _ = sess.run([merged, train_step],
-                                    feed_dict={bottleneck_input: train_bottlenecks,
-                                               ground_truth_input: train_ground_truth})
+        train_summary, _ = train_sess.run(
+            [merged, train_step],
+            feed_dict={bottleneck_input: train_bottlenecks,
+                      ground_truth_input: train_ground_truth})
         train_writer.add_summary(train_summary, i)
 
         # Every so often, print out how well the graph is training.
         is_last_step = (i + 1 == FLAGS.how_many_training_steps)
         if (i % FLAGS.eval_step_interval) == 0 or is_last_step:
-            train_accuracy, cross_entropy_value = sess.run(
+            train_accuracy, cross_entropy_value = train_sess.run(
                 [evaluation_step, cross_entropy],
                 feed_dict={bottleneck_input: train_bottlenecks,
-                           ground_truth_input: train_ground_truth})
+                          ground_truth_input: train_ground_truth})
             print('%s: Step %d: Train accuracy = %.1f%%' % (datetime.now(), i,
-                                                            train_accuracy * 100))
+                                                          train_accuracy * 100))
             print('%s: Step %d: Cross entropy = %f' % (datetime.now(), i,
-                                                       cross_entropy_value))
+                                                     cross_entropy_value))
             validation_bottlenecks, validation_ground_truth, _ = (
                 get_random_cached_bottlenecks(
                     sess, image_lists, FLAGS.validation_batch_size, 'validation',
@@ -883,10 +909,10 @@ def main(_):
                     bottleneck_tensor))
             # Run a validation step and capture training summaries for TensorBoard
             # with the `merged` op.
-            validation_summary, validation_accuracy = sess.run(
+            validation_summary, validation_accuracy = train_sess.run(
                 [merged, evaluation_step],
                 feed_dict={bottleneck_input: validation_bottlenecks,
-                           ground_truth_input: validation_ground_truth})
+                          ground_truth_input: validation_ground_truth})
             validation_writer.add_summary(validation_summary, i)
             print('%s: Step %d: Validation accuracy = %.1f%% (N=%d)' %
                   (datetime.now(), i, validation_accuracy * 100,
@@ -899,10 +925,10 @@ def main(_):
                                       'testing', FLAGS.bottleneck_dir,
                                       FLAGS.image_dir, jpeg_data_tensor,
                                       bottleneck_tensor))
-    test_accuracy, predictions = sess.run(
+    test_accuracy, predictions = train_sess.run(
         [evaluation_step, prediction],
         feed_dict={bottleneck_input: test_bottlenecks,
-                   ground_truth_input: test_ground_truth})
+                  ground_truth_input: test_ground_truth})
     print('Final test accuracy = %.1f%% (N=%d)' % (
         test_accuracy * 100, len(test_bottlenecks)))
 
@@ -915,7 +941,7 @@ def main(_):
 
     # Write out the trained graph and labels with the weights stored as constants.
     output_graph_def = graph_util.convert_variables_to_constants(
-        sess, graph.as_graph_def(), [FLAGS.final_tensor_name])
+        train_sess, train_graph.as_graph_def(), [FLAGS.final_tensor_name])
     with gfile.FastGFile(FLAGS.output_graph, 'wb') as f:
         f.write(output_graph_def.SerializeToString())
     with gfile.FastGFile(FLAGS.output_labels, 'w') as f:
@@ -1076,4 +1102,5 @@ if __name__ == '__main__':
       """
     )
     FLAGS, unparsed = parser.parse_known_args()
-    tf.compat.v1.app.run(main=main, argv=[sys.argv[0]] + unparsed)
+    # In TensorFlow 2.x, we don't need tf.app.run anymore, we can just call main directly
+    main(None)
