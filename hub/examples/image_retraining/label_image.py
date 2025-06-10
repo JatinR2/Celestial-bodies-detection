@@ -18,7 +18,7 @@ def get_labels(image_data, cwd):
     with tf.io.gfile.GFile(cwd + "/retrained_graph.pb", "rb") as f:
         graph_def = tf.compat.v1.GraphDef()
         graph_def.ParseFromString(f.read())
-        _ = tf.import_graph_def(graph_def, name="")
+        _ = tf.compat.v1.import_graph_def(graph_def, name="")
 
     # Feed the image_data as input to the graph and get first prediction
     with tf.compat.v1.Session() as sess:
