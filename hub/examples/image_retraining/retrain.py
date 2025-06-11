@@ -1,3 +1,4 @@
+import os
 # Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -167,7 +168,7 @@ def create_image_lists(image_dir, testing_percentage, validation_percentage):
             # To do that, we need a stable way of deciding based on just the file name
             # itself, so we do a hash of that and then use that to generate a
             # probability value that we use to assign it.
-            hash_name_hashed = hashlib.sha1(
+            hash_name_hashed = hashlib.sha256(
                 compat.as_bytes(hash_name)).hexdigest()
             percentage_hash = ((int(hash_name_hashed, 16) %
                                 (MAX_NUM_IMAGES_PER_CLASS + 1)) *
