@@ -1,3 +1,4 @@
+import os
 # Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -167,7 +168,7 @@ def create_image_lists(image_dir, testing_percentage, validation_percentage):
             # To do that, we need a stable way of deciding based on just the file name
             # itself, so we do a hash of that and then use that to generate a
             # probability value that we use to assign it.
-            hash_name_hashed = hashlib.sha1(
+            hash_name_hashed = hashlib.sha256(
                 compat.as_bytes(hash_name)).hexdigest()
             percentage_hash = ((int(hash_name_hashed, 16) %
                                 (MAX_NUM_IMAGES_PER_CLASS + 1)) *
@@ -254,7 +255,7 @@ def create_inception_graph():
             graph_def = tf.compat.v1.GraphDef()
             graph_def.ParseFromString(f.read())
             bottleneck_tensor, jpeg_data_tensor, resized_input_tensor = (
-                tf.import_graph_def(graph_def, name='', return_elements=[
+                tf.compat.v1.import_graph_def(graph_def, name='', return_elements=[
                     BOTTLENECK_TENSOR_NAME, JPEG_DATA_TENSOR_NAME,
                     RESIZED_INPUT_TENSOR_NAME]))
     return sess.graph, bottleneck_tensor, jpeg_data_tensor, resized_input_tensor
@@ -649,51 +650,51 @@ def add_input_distortions(flip_left_right, random_crop, random_scale,
     """
 
     jpeg_data = tf.compat.v1.placeholder(tf.string, name='DistortJPGInput')
-    decoded_image = tf.image.decode_jpeg(jpeg_data, channels=MODEL_INPUT_DEPTH)
-    decoded_image_as_float = tf.cast(decoded_image, dtype=tf.float32)
-    decoded_image_4d = tf.expand_dims(decoded_image_as_float, 0)
+    decoded_image = tf.compat.v1.image.decode_jpeg(jpeg_data, channels=MODEL_INPUT_DEPTH)
+    decoded_image_as_float = tf.compat.v1.cast(decoded_image, dtype=tf.float32)
+    decoded_image_4d = tf.compat.v1.expand_dims(decoded_image_as_float, 0)
     margin_scale = 1.0 + (random_crop / 100.0)
     resize_scale = 1.0 + (random_scale / 100.0)
-    margin_scale_value = tf.constant(margin_scale)
-    resize_scale_value = tf.random.uniform(tensor_shape.scalar(),
+    margin_scale_value = tf.compat.v1.constant(margin_scale)
+    resize_scale_value = tf.compat.v1.random.uniform(tensor_shape.scalar(),
                                            minval=1.0,
                                            maxval=resize_scale)
-    scale_value = tf.multiply(margin_scale_value, resize_scale_value)
-    precrop_width = tf.multiply(scale_value, MODEL_INPUT_WIDTH)
-    precrop_height = tf.multiply(scale_value, MODEL_INPUT_HEIGHT)
-    precrop_shape = tf.stack([precrop_height, precrop_width])
-    precrop_shape_as_int = tf.cast(precrop_shape, dtype=tf.int32)
-    precropped_image = tf.image.resize(decoded_image_4d,
-                                       precrop_shape_as_int, method=tf.image.ResizeMethod.BILINEAR)
-    precropped_image_3d = tf.squeeze(precropped_image, axis=[0])
-    cropped_image = tf.image.random_crop(precropped_image_3d,
+    scale_value = tf.compat.v1.multiply(margin_scale_value, resize_scale_value)
+    precrop_width = tf.compat.v1.multiply(scale_value, MODEL_INPUT_WIDTH)
+    precrop_height = tf.compat.v1.multiply(scale_value, MODEL_INPUT_HEIGHT)
+    precrop_shape = tf.compat.v1.stack([precrop_height, precrop_width])
+    precrop_shape_as_int = tf.compat.v1.cast(precrop_shape, dtype=tf.int32)
+    precropped_image = tf.compat.v1.image.resize(decoded_image_4d,
+                                       precrop_shape_as_int, method=tf.compat.v1.image.ResizeMethod.BILINEAR)
+    precropped_image_3d = tf.compat.v1.squeeze(precropped_image, axis=[0])
+    cropped_image = tf.compat.v1.image.random_crop(precropped_image_3d,
                                          [MODEL_INPUT_HEIGHT, MODEL_INPUT_WIDTH,
                                           MODEL_INPUT_DEPTH])
     if flip_left_right:
-        flipped_image = tf.image.random_flip_left_right(cropped_image)
+        flipped_image = tf.compat.v1.image.random_flip_left_right(cropped_image)
     else:
         flipped_image = cropped_image
     brightness_min = 1.0 - (random_brightness / 100.0)
     brightness_max = 1.0 + (random_brightness / 100.0)
-    brightness_value = tf.random.uniform(tensor_shape.scalar(),
+    brightness_value = tf.compat.v1.random.uniform(tensor_shape.scalar(),
                                          minval=brightness_min,
                                          maxval=brightness_max)
-    brightened_image = tf.multiply(flipped_image, brightness_value)
-    distort_result = tf.expand_dims(brightened_image, 0, name='DistortResult')
+    brightened_image = tf.compat.v1.multiply(flipped_image, brightness_value)
+    distort_result = tf.compat.v1.expand_dims(brightened_image, 0, name='DistortResult')
     return jpeg_data, distort_result
 
 
 def variable_summaries(var):
     """Attach a lot of summaries to a Tensor (for TensorBoard visualization)."""
     with tf.compat.v1.name_scope('summaries'):
-        mean = tf.reduce_mean(input_tensor=var)
+        mean = tf.compat.v1.reduce_mean(input_tensor=var)
         tf.compat.v1.summary.scalar('mean', mean)
         with tf.compat.v1.name_scope('stddev'):
-            stddev = tf.sqrt(tf.reduce_mean(
-                input_tensor=tf.square(var - mean)))
+            stddev = tf.compat.v1.sqrt(tf.compat.v1.reduce_mean(
+                input_tensor=tf.compat.v1.square(var - mean)))
         tf.compat.v1.summary.scalar('stddev', stddev)
-        tf.compat.v1.summary.scalar('max', tf.reduce_max(input_tensor=var))
-        tf.compat.v1.summary.scalar('min', tf.reduce_min(input_tensor=var))
+        tf.compat.v1.summary.scalar('max', tf.compat.v1.reduce_max(input_tensor=var))
+        tf.compat.v1.summary.scalar('min', tf.compat.v1.reduce_min(input_tensor=var))
         tf.compat.v1.summary.histogram('histogram', var)
 
 
@@ -731,25 +732,25 @@ def add_final_training_ops(class_count, final_tensor_name, bottleneck_tensor):
     layer_name = 'final_training_ops'
     with tf.compat.v1.name_scope(layer_name):
         with tf.compat.v1.name_scope('weights'):
-            layer_weights = tf.Variable(tf.random.truncated_normal(
+            layer_weights = tf.compat.v1.Variable(tf.compat.v1.random.truncated_normal(
                 [BOTTLENECK_TENSOR_SIZE, class_count], stddev=0.001), name='final_weights')
             variable_summaries(layer_weights)
         with tf.compat.v1.name_scope('biases'):
-            layer_biases = tf.Variable(
+            layer_biases = tf.compat.v1.Variable(
                 tf.zeros([class_count]), name='final_biases')
             variable_summaries(layer_biases)
         with tf.compat.v1.name_scope('Wx_plus_b'):
-            logits = tf.matmul(bottleneck_input, layer_weights) + layer_biases
+            logits = tf.compat.v1.matmul(bottleneck_input, layer_weights) + layer_biases
             tf.compat.v1.summary.histogram('pre_activations', logits)
 
-    final_tensor = tf.nn.softmax(logits, name=final_tensor_name)
+    final_tensor = tf.compat.v1.nn.softmax(logits, name=final_tensor_name)
     tf.compat.v1.summary.histogram('activations', final_tensor)
 
     with tf.compat.v1.name_scope('cross_entropy'):
-        cross_entropy = tf.nn.softmax_cross_entropy_with_logits(
-            labels=tf.stop_gradient(ground_truth_input), logits=logits)
+        cross_entropy = tf.compat.v1.nn.softmax_cross_entropy_with_logits(
+            labels=tf.compat.v1.stop_gradient(ground_truth_input), logits=logits)
         with tf.compat.v1.name_scope('total'):
-            cross_entropy_mean = tf.reduce_mean(input_tensor=cross_entropy)
+            cross_entropy_mean = tf.compat.v1.reduce_mean(input_tensor=cross_entropy)
     tf.compat.v1.summary.scalar('cross_entropy', cross_entropy_mean)
 
     with tf.compat.v1.name_scope('train'):
@@ -773,12 +774,12 @@ def add_evaluation_step(result_tensor, ground_truth_tensor):
     """
     with tf.compat.v1.name_scope('accuracy'):
         with tf.compat.v1.name_scope('correct_prediction'):
-            prediction = tf.argmax(input=result_tensor, axis=1)
-            correct_prediction = tf.equal(
-                prediction, tf.argmax(input=ground_truth_tensor, axis=1))
+            prediction = tf.compat.v1.argmax(input=result_tensor, axis=1)
+            correct_prediction = tf.compat.v1.equal(
+                prediction, tf.compat.v1.argmax(input=ground_truth_tensor, axis=1))
         with tf.compat.v1.name_scope('accuracy'):
-            evaluation_step = tf.reduce_mean(
-                input_tensor=tf.cast(correct_prediction, tf.float32))
+            evaluation_step = tf.compat.v1.reduce_mean(
+                input_tensor=tf.compat.v1.cast(correct_prediction, tf.float32))
     tf.compat.v1.summary.scalar('accuracy', evaluation_step)
     return evaluation_step, prediction
 
