@@ -241,23 +241,25 @@ def get_bottleneck_path(image_lists, label_name, index, bottleneck_dir,
 
 
 def create_inception_graph():
-    """"Creates a graph from saved GraphDef file and returns a Graph object.
+    """Creates a graph from saved GraphDef file and returns a Graph object.
 
     Returns:
       Graph holding the trained Inception network, and various tensors we'll be
       manipulating.
     """
-    with tf.compat.v1.Session() as sess:
+    graph = tf.Graph()
+    with graph.as_default():
+        sess = tf.compat.v1.Session()
         model_filename = os.path.join(
             FLAGS.model_dir, 'classify_image_graph_def.pb')
         with gfile.FastGFile(model_filename, 'rb') as f:
             graph_def = tf.compat.v1.GraphDef()
             graph_def.ParseFromString(f.read())
-            bottleneck_tensor, jpeg_data_tensor, resized_input_tensor = (
-                tf.import_graph_def(graph_def, name='', return_elements=[
-                    BOTTLENECK_TENSOR_NAME, JPEG_DATA_TENSOR_NAME,
-                    RESIZED_INPUT_TENSOR_NAME]))
-    return sess.graph, bottleneck_tensor, jpeg_data_tensor, resized_input_tensor
+            tf.import_graph_def(graph_def, name='')
+            bottleneck_tensor = graph.get_tensor_by_name(BOTTLENECK_TENSOR_NAME)
+            jpeg_data_tensor = graph.get_tensor_by_name(JPEG_DATA_TENSOR_NAME)
+            resized_input_tensor = graph.get_tensor_by_name(RESIZED_INPUT_TENSOR_NAME)
+    return graph, bottleneck_tensor, jpeg_data_tensor, resized_input_tensor
 
 
 def run_bottleneck_on_image(sess, image_data, image_data_tensor,
