@@ -746,7 +746,7 @@ def add_final_training_ops(class_count, final_tensor_name, bottleneck_tensor):
     tf.compat.v1.summary.histogram('activations', final_tensor)
 
     with tf.compat.v1.name_scope('cross_entropy'):
-        cross_entropy = tf.nn.softmax_cross_entropy_with_logits(
+        cross_entropy = tf.nn.softmax_cross_entropy_with_logits_v2(labels=
             labels=tf.stop_gradient(ground_truth_input), logits=logits)
         with tf.compat.v1.name_scope('total'):
             cross_entropy_mean = tf.reduce_mean(input_tensor=cross_entropy)
