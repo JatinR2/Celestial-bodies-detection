@@ -90,7 +90,7 @@ FLAGS = None
 # sizes. If you want to adapt this script to work with another model, you will
 # need to update these to reflect the values in the network you're using.
 # pylint: disable=line-too-long
-DATA_URL = 'http://download.tensorflow.org/models/image/imagenet/inception-2015-12-05.tgz'
+DATA_URL = 'https://download.tensorflow.org/models/image/imagenet/inception-2015-12-05.tgz'
 # pylint: enable=line-too-long
 BOTTLENECK_TENSOR_NAME = 'pool_3/_reshape:0'
 BOTTLENECK_TENSOR_SIZE = 2048
@@ -167,7 +167,7 @@ def create_image_lists(image_dir, testing_percentage, validation_percentage):
             # To do that, we need a stable way of deciding based on just the file name
             # itself, so we do a hash of that and then use that to generate a
             # probability value that we use to assign it.
-            hash_name_hashed = hashlib.sha1(
+            hash_name_hashed = hashlib.sha256(
                 compat.as_bytes(hash_name)).hexdigest()
             percentage_hash = ((int(hash_name_hashed, 16) %
                                 (MAX_NUM_IMAGES_PER_CLASS + 1)) *

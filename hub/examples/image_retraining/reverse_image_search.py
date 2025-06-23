@@ -4,7 +4,7 @@ import sys
 import base64
 
 def reverseImageSearch(encodedImage):
-    searchUrl = 'http://www.google.hr/searchbyimage/upload'
+    searchUrl = 'https://www.google.hr/searchbyimage/upload'
     multipart = {'encoded_image': encodedImage, 'image_content': ''}
     response = requests.post(searchUrl, files=multipart, allow_redirects=False)
     fetchUrl = response.headers['Location']
